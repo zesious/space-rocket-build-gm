@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>우주항공 기업 경영 시뮬레이션</title>
+<style>
+:root{--bg:#0b1020;--panel:#151d33;--line:#2a3658;--text:#e6ebff;--sub:#8b96bd;--acc:#4ea8ff;--ok:#43d17a;--bad:#ff6b6b;--warn:#ffc857}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;font-size:15px;display:flex;flex-direction:column;overflow:hidden}
+header{padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:5}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;max-width:1100px;margin:0 auto}
+main{padding:16px;max-width:1100px;margin:0 auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{margin:0 0 8px;font-size:16px}
+button{background:var(--acc);color:#06142b;border:0;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;font-size:14px}
+button:disabled{background:#33405f;color:#7c87a8;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.bar{height:8px;background:#0c1328;border-radius:4px;overflow:hidden;margin:6px 0}
+.bar>div{height:100%;background:var(--acc)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.sub{color:var(--sub);font-size:13px}
+.big{font-size:22px;font-weight:700}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:#22305a;margin-right:4px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)}
+input,select{background:#0c1328;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:15px;width:100%}
+.opt{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
+.opt label{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer}
+.opt input{width:auto}
+#msg{color:var(--warn);font-size:13px;min-height:18px;padding:0 16px;max-width:1100px;margin:0 auto}
+.wrap{max-width:560px;margin:30px auto;padding:0 16px}
+@media (max-width:600px){main{padding:10px}.big{font-size:18px}}
+#scene{flex:0 0 50%;min-height:0;position:relative;background:linear-gradient(#0b1a3a,#1d2c55 72%,#1e2f1e 72%);border-bottom:2px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.sc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px 14px;z-index:1}
+#scene svg{flex:1;width:100%;min-height:0}
+.sc-status{position:absolute;left:12px;bottom:8px;font-size:13px;color:#cfe0ff;background:rgba(11,16,32,.7);padding:4px 10px;border-radius:8px}
+.btn-new{background:#ff8a4c;color:#1a0d00}
+.sc-result{position:absolute;top:58px;left:50%;transform:translateX(-50%);font-weight:700;background:rgba(11,16,32,.85);padding:6px 14px;border-radius:8px;white-space:nowrap;font-size:15px}
+#panel{flex:1 1 50%;min-height:0;overflow-y:auto;background:var(--bg)}
+#panel nav{position:sticky;top:0;background:var(--bg);z-index:2;padding:8px 12px;margin:0;max-width:none;border-bottom:1px solid var(--line)}
+#panel #msg{padding:6px 12px 0;margin:0;max-width:none}
+#panel main{padding:10px 12px;max-width:none}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="panel">
+  <nav id="nav"></nav>
+  <div id="msg"></div>
+  <div id="app"></div>
+</div>
+
+<script>
+/* ===== 확정 규칙 및 밸런스 상수 ===== */
+const SAVE_KEY='space_tycoon_v1';
+const C={FAIL_BASE:0.30,LOAN_RATE:0.01,MAX_LEVEL:10,FREE_RECRUIT_CD:600,PAID_RECRUIT:50000,MAX_TEAMS:8,LAUNCH_SEC:30,CONTRACT_GEN_SEC:30,MAX_OFFERS:3,MAX_ROCKETS:3,MAX_ACCEPTED:8};
+const PARTS={s1:{name:'1단 로켓',team:'1단 로켓팀'},s2:{name:'2단 로켓',team:'2단 로켓팀'},eng:{name:'엔진',team:'엔진팀'},cargo:{name:'화물 공간',team:'화물팀'}};
+const KEYS=Object.keys(PARTS);
+const GRADES=[{n:'일반',w:50,m:1},{n:'고급',w:30,m:1.2},{n:'희귀',w:14,m:1.5},{n:'영웅',w:5,m:1.8},{n:'전설',w:1,m:2.5}];
+const TYPES={private:{name:'민간 스타트업',funds:5000000,desc:'초기 자본 적음 · 자유도 높음 · 투자 유치 가능(예정)'},state:{name:'국영 우주기업',funds:20000000,desc:'초기 자본 많음 · 정부 지원 (국가 임무는 예정)'}};
+const TABS=[['dash','대시보드'],['research','연구'],['team','인력'],['build','로켓 제작'],['contract','계약·발사'],['finance','자금·대출'],['info','회사·미구현']];
+const CONTRACT_NAMES=['통신위성 발사','관측위성 발사','우주 화물 운송','보급품 운송','항법위성 발사'];
+// 궤도별 필요 엔진 레벨과 보상 배율
+const ORBIT={'저궤도':{req:1,mult:1},'고궤도':{req:3,mult:1.8},'달 궤도':{req:5,mult:2.8}};
+
+/* ===== 공식 ===== */
+const rCost=lvl=>60000*(lvl+1)*(lvl+1);    // 연구 비용
+const rTime=lvl=>60*(lvl+1);               // 연구 시간(초)
+const bCost=lvl=>30000*(lvl+1);            // 부품 제작비
+const bTime=lvl=>20*(lvl+1);               // 부품 제작 시간(초)
+const salaryPerSec=t=>t.size*GRADES[t.grade].m*8000/3600; // 인건비(실시간)
+const xpNeed=l=>l*120;
+const capacity=r=>r.slots.cargo*1500+r.slots.eng*500;
+const isReady=r=>KEYS.every(k=>r.slots[k]!==null);
+const failFrom=lv=>{const avg=lv.reduce((a,b)=>a+b,0)/lv.length;return Math.max(0.05,C.FAIL_BASE-(avg-1)*0.02);};
+const failChance=r=>failFrom(KEYS.map(k=>r.slots[k]));
+// 로켓 전체 계획: 장착·제작 중인 부품은 확정 레벨, 미착수 부품은 선택한 레벨로 가정
+function rocketPlan(r){
+  const lv={};let cost=0;
+  for(const k of KEYS){
+    const b=S.builds.find(x=>x.rid===r.id&&x.part===k);
+    if(r.slots[k]!==null) lv[k]=r.slots[k];
+    else if(b) lv[k]=b.lvl;
+    else{const sel=Math.min(S.lvl[k],Math.max(1,ui.bl[r.id+k]||S.lvl[k]));lv[k]=sel;cost+=bCost(sel)}
+  }
+  return {cost,cap:lv.cargo*1500+lv.eng*500,pct:Math.round(failFrom(KEYS.map(k=>lv[k]))*100)};
+}
+function planLine(r){
+  const p=rocketPlan(r);
+  return `<div class="sub">필요 금액 ${p.cost>0?fmt(p.cost):'없음(완성)'} · 적재량 ${p.cap.toLocaleString('ko-KR')}kg · 폭발 확률 ${p.pct}%</div>`;
+}
+const fmt=n=>'$'+Math.round(n).toLocaleString('ko-KR');
+const fmtT=s=>{s=Math.max(0,Math.ceil(s));const m=Math.floor(s/60),r=s%60;return m?`${m}분 ${r}초`:`${r}초`};
+const remain=end=>(end-Date.now())/1000;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+const gradeIdx=()=>{let r=Math.random()*100,a=0;for(let i=0;i<GRADES.length;i++){a+=GRADES[i].w;if(r<a)return i}return 0};
+
+/* ===== 상태 ===== */
+let S=null;
+const ui={tab:'dash',msg:'',amt:'1000000',setupName:'',bl:{}};
+
+function newState(name,type){
+  const s={v:1,name,type,level:1,xp:0,funds:TYPES[type].funds,loan:0,
+    lastTick:Date.now(),lastFree:0,lastGen:Date.now(),
+    lvl:{s1:1,s2:1,eng:1,cargo:1},   // 시작: 4종 부품 모두 Lv.1 기초 연구 완료
+    research:{},teams:[],builds:[],rockets:[],offers:[],accepted:[],flight:null,log:[],nextId:1};
+  for(let i=0;i<C.MAX_OFFERS;i++) s.offers.push(newContract(s));
+  return s;
+}
+function newContract(s){
+  const cap=300+s.level*200;
+  const w=Math.round((200+Math.random()*(cap-200))/100)*100;
+  const open=Object.keys(ORBIT).filter(o=>ORBIT[o].req<=s.lvl.eng);
+  const fresh=open.filter(o=>!s.offers.some(c=>c.dest===o));
+  const dest=rnd(fresh.length?fresh:open);
+  return {id:s.nextId++,name:rnd(CONTRACT_NAMES),weight:w,reward:Math.round(w*(250+s.level*25)*ORBIT[dest].mult),dest};
+}
+function uid(){return S.nextId++}
+function log(m){S.log.unshift(`[${new Date().toLocaleTimeString('ko-KR')}] ${m}`);S.log.length=Math.min(S.log.length,30)}
+function addXp(x){
+  S.xp+=x;
+  while(S.xp>=xpNeed(S.level)){S.xp-=xpNeed(S.level);S.level++;S.funds+=50000;log(`회사 레벨 ${S.level} 달성! 보너스 ${fmt(50000)}`)}
+}
+const findC=id=>S.offers.find(c=>c.id===id)||S.accepted.find(c=>c.id===id);
+const findR=id=>S.rockets.find(r=>r.id===id);
+
+/* ===== 게임 로직 ===== */
+function startResearch(k){
+  const now=Date.now();
+  if(S.research[k]) return '이미 연구 중입니다.';
+  const lvl=S.lvl[k];
+  if(lvl>=C.MAX_LEVEL) return '최대 단계에 도달했습니다.';
+  const cost=rCost(lvl);
+  if(S.funds<cost) return '자금이 부족합니다.';
+  let t=rTime(lvl);
+  let team=S.teams.find(x=>x.kind===k&&!x.task),tid=null;
+  if(team){t*=Math.max(0.25,0.5-0.05*team.grade);team.task='research:'+k;tid=team.id}
+  S.funds-=cost;
+  S.research[k]={end:now+t*1000,target:lvl+1,team:tid};
+  log(`${PARTS[k].name} 연구 시작 (Lv.${lvl+1}) ${team?'· '+PARTS[k].team+' 배정':''}`);
+  return null;
+}
+function recruit(paid){
+  if(S.teams.length>=C.MAX_TEAMS) return `팀은 최대 ${C.MAX_TEAMS}개까지 운영할 수 있습니다.`;
+  const now=Date.now();
+  if(!paid && now-S.lastFree<C.FREE_RECRUIT_CD*1000) return `무료 모집 대기: ${fmtT(C.FREE_RECRUIT_CD-(now-S.lastFree)/1000)}`;
+  if(paid && S.funds<C.PAID_RECRUIT) return '자금이 부족합니다.';
+  if(paid) S.funds-=C.PAID_RECRUIT; else S.lastFree=now;
+  const g=gradeIdx();
+  const t={id:uid(),kind:rnd(KEYS),grade:g,size:2+g+Math.floor(Math.random()*3),task:null};
+  S.teams.push(t);
+  log(`${GRADES[g].n} 등급 ${PARTS[t.kind].team} 모집 (${t.size}명)`);
+  return null;
+}
+function fireTeam(tid){
+  const i=S.teams.findIndex(t=>t.id===tid);
+  if(i<0) return '팀을 찾을 수 없습니다.';
+  const t=S.teams[i];
+  if(t.task) return '연구 배정 중인 팀은 해고할 수 없습니다. 연구가 끝난 뒤 해고하세요.';
+  S.teams.splice(i,1);
+  log(`${PARTS[t.kind].team} 해고 (${t.size}명)`);
+  return null;
+}
+function newRocket(){
+  const unfinished=S.rockets.filter(r=>!isReady(r)).length;
+  if(unfinished>=C.MAX_ROCKETS) return `동시에 조립 가능한 로켓은 ${C.MAX_ROCKETS}개입니다.`;
+  S.rockets.push({id:uid(),slots:{s1:null,s2:null,eng:null,cargo:null}});
+  log('새 로켓 조립을 시작했습니다.');
+  return null;
+}
+function build(rid,k,lvl){
+  const r=findR(rid);
+  if(!r) return '로켓을 찾을 수 없습니다.';
+  if(r.slots[k]!==null) return '이미 장착된 부품입니다.';
+  if(S.builds.some(b=>b.rid===rid&&b.part===k)) return '이미 제작 중입니다.';
+  if(!lvl||lvl<1||lvl>S.lvl[k]) return `${PARTS[k].name} 연구가 필요하거나 제작 레벨이 잘못되었습니다.`;
+  const cost=bCost(lvl);
+  if(S.funds<cost) return '자금이 부족합니다.';
+  S.funds-=cost;
+  S.builds.push({id:uid(),rid,part:k,lvl,end:Date.now()+bTime(lvl)*1000});
+  log(`${PARTS[k].name} Lv.${lvl} 제작 시작`);
+  return null;
+}
+function rejectContract(cid){
+  const i=S.offers.findIndex(c=>c.id===cid);
+  if(i<0) return '계약을 찾을 수 없습니다.';
+  const c=S.offers.splice(i,1)[0];
+  log(`${c.name} 계약을 거절했습니다.`);
+  return null;
+}
+function abandonContract(cid){
+  const i=S.accepted.findIndex(c=>c.id===cid);
+  if(i<0) return '계약을 찾을 수 없습니다.';
+  if(S.flight&&S.flight.cids.includes(cid)) return '발사 중인 화물 계약은 포기할 수 없습니다.';
+  const c=S.accepted.splice(i,1)[0];
+  log(`${c.name} 계약을 포기했습니다.`);
+  return null;
+}
+function accept(cid){
+  if(S.accepted.length>=C.MAX_ACCEPTED) return `수락할 수 있는 임무는 최대 ${C.MAX_ACCEPTED}개입니다.`;
+  const i=S.offers.findIndex(c=>c.id===cid);
+  if(i<0) return '계약을 찾을 수 없습니다.';
+  S.accepted.push(S.offers.splice(i,1)[0]);
+  log('운송 계약을 수락했습니다.');
+  return null;
+}
+function launch(orbit){
+  if(S.flight) return '이미 발사 진행 중입니다.';
+  const test=orbit==='시험';
+  const need=test?0:ORBIT[orbit].req;
+  const ready=S.rockets.filter(r=>isReady(r)&&r.slots.eng>=need).sort((a,b)=>capacity(a)-capacity(b));
+  if(!ready.length) return test?'발사할 수 있는 완성 로켓이 없습니다.':`${orbit}은(는) 엔진 Lv.${need} 이상인 완성 로켓이 필요합니다.`;
+  const pending=test?[]:S.accepted.filter(c=>c.dest===orbit).sort((a,b)=>b.weight-a.weight);
+  if(!test&&!pending.length) return `${orbit} 목적지의 수락 계약이 없습니다.`;
+  const total=pending.reduce((a,c)=>a+c.weight,0);
+  // 같은 궤도 화물을 모두 실을 수 있는 가장 작은 로켓 우선, 없으면 가장 큰 로켓에 가능한 만큼 적재
+  const rocket=ready.find(r=>capacity(r)>=total)||ready[ready.length-1];
+  let left=capacity(rocket);const loaded=[];
+  for(const c of pending){if(c.weight<=left){loaded.push(c.id);left-=c.weight}}
+  if(!test&&!loaded.length) return '화물을 실을 수 있는 완성 로켓이 없습니다.';
+  const start=Date.now();
+  S.flight={cids:loaded,rid:rocket.id,orbit,start,end:start+C.LAUNCH_SEC*1000,fail:Math.random()<failChance(rocket),failAt:2+Math.floor(Math.random()*5)};
+  log(test?`시험 발사 (로켓 #${rocket.id})`:`${orbit} 발사: ${loaded.length}건 화물 탑재 (로켓 #${rocket.id})`);
+  return null;
+}
+function borrow(){
+  const a=Math.floor(Number(ui.amt)||0);
+  if(a<=0) return '금액을 입력하세요.';
+  const avail=S.level*1000000-S.loan;
+  if(a>avail) return `대출 한도 초과 (남은 한도 ${fmt(Math.max(0,avail))})`;
+  S.loan+=a;S.funds+=a;log(`${fmt(a)} 대출`);return null;
+}
+function repay(){
+  const a=Math.min(Math.floor(Number(ui.amt)||0),Math.floor(S.loan),Math.floor(S.funds));
+  if(a<=0) return '상환할 수 없습니다 (금액 또는 자금 확인).';
+  S.loan-=a;S.funds-=a;log(`${fmt(a)} 상환`);return null;
+}
+
+/* ===== 실시간 틱 (백그라운드 진행 포함, 접속 시 경과 시간 일괄 처리) ===== */
+function tick(){
+  const now=Date.now();
+  const dt=(now-S.lastTick)/1000;
+  if(dt<=0) return;
+  S.lastTick=now;
+  // 인건비 & 고정 1% 이자 (시간당)
+  S.funds-=S.teams.reduce((a,t)=>a+salaryPerSec(t),0)*dt;
+  if(S.loan>0) S.loan+=S.loan*C.LOAN_RATE*dt/3600;
+  // 연구 완료
+  for(const k of KEYS){
+    const r=S.research[k];
+    if(r&&r.end<=now){
+      S.lvl[k]=r.target;
+      const t=S.teams.find(x=>x.id===r.team);
+      if(t) t.task=null;
+      delete S.research[k];
+      addXp(50+r.target*30);
+      log(`${PARTS[k].name} Lv.${r.target} 연구 완료`);
+    }
+  }
+  // 부품 제작 완료 → 로켓에 바로 장착
+  S.builds=S.builds.filter(b=>{
+    if(b.end>now) return true;
+    const r=findR(b.rid);
+    if(r){r.slots[b.part]=b.lvl;addXp(10+b.lvl*5);log(`${PARTS[b.part].name} 장착 완료`)}
+    return false;
+  });
+  // 발사 결과
+  if(S.flight&&S.flight.end<=now){
+    const f=S.flight;S.flight=null;
+    const r=findR(f.rid);
+    const cs=S.accepted.filter(x=>f.cids.includes(x.id));
+    S.rockets=S.rockets.filter(x=>x.id!==f.rid);
+    if(r){
+      S.accepted=S.accepted.filter(x=>!f.cids.includes(x.id));
+      if(f.fail){
+        S.offers.push(...cs);
+        log(`발사 실패! 로켓과 화물 손실.${cs.length?' 계약은 다시 게시됩니다.':''}`);
+        S.result={ok:false,t:Date.now(),msg:'발사 실패! 로켓과 화물 손실'};
+      }else{
+        const pay=cs.reduce((a,c)=>a+c.reward,0);
+        S.funds+=pay;addXp(50+cs.length*50+Math.round(pay/20000));
+        log(cs.length?`발사 성공! ${cs.length}건 임무 완수, 보상 ${fmt(pay)} 지급`:'시험 발사 성공 (경험치 획득)');
+        S.result={ok:true,t:Date.now(),msg:cs.length?`발사 성공! ${cs.length}건 임무 완수 (+${fmt(pay)})`:'시험 발사 성공'};
+      }
+    }
+  }
+  // 새 계약 생성
+  if(S.offers.length<C.MAX_OFFERS&&now-S.lastGen>=C.CONTRACT_GEN_SEC*1000){
+    while(S.offers.length<C.MAX_OFFERS) S.offers.push(newContract(S));
+    S.lastGen=now;
+  }
+}
+
+/* ===== 저장 / 불러오기 ===== */
+function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S))}catch(e){}}
+function load(){
+  try{
+    const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');
+    if(d&&d.v===1){S=d;if(S.flight&&(!S.flight.cids||!S.flight.start))S.flight=null;S.offers.concat(S.accepted).forEach(c=>{if(c.dest==='정지궤도')c.dest='고궤도'});tick();}
+  }catch(e){S=null}
+}
+function reset(){
+  if(!confirm('저장된 진행 상황을 모두 삭제하고 새로 시작할까요?')) return 'cancel';
+  try{localStorage.removeItem(SAVE_KEY)}catch(e){}
+  S=null;return null;
+}
+
+/* ===== 화면 ===== */
+const PAGES={
+  dash(){
+    const ready=S.rockets.filter(isReady).length;
+    const rs=Object.entries(S.research).map(([k,r])=>`<div class="row"><span>${PARTS[k].name} → Lv.${r.target}</span><span class="sub">${fmtT(remain(r.end))} 남음</span></div>`).join('')||'<div class="sub">진행 중인 연구 없음</div>';
+    const bs=S.builds.map(b=>`<div class="row"><span>${PARTS[b.part].name} Lv.${b.lvl} 제작</span><span class="sub">${fmtT(remain(b.end))} 남음</span></div>`).join('')||'<div class="sub">진행 중인 제작 없음</div>';
+    const fl=S.flight?`${S.flight.orbit==='시험'?'시험 발사':S.flight.orbit+' 발사'} 중 (${S.flight.cids.length}건 탑재) · ${fmtT(remain(S.flight.end))}`:'발사 중인 로켓 없음';
+    const pct=Math.min(100,S.xp/xpNeed(S.level)*100);
+    const grade=S.level>=10?'선도 기업':S.level>=5?'성장 기업':'신생 기업';
+    return `
+    <div class="card"><h3>회사 정보</h3>
+      <div class="row"><span>형태</span><span>${TYPES[S.type].name}</span></div>
+      <div class="row"><span>회사 등급</span><span>${grade}</span></div>
+      <div class="row"><span>회사 레벨</span><span>Lv.${S.level}</span></div>
+      <div class="bar"><div style="width:${pct}%"></div></div>
+      <div class="sub">경험치 ${S.xp} / ${xpNeed(S.level)}</div></div>
+    <div class="card"><h3>자금</h3>
+      <div class="big ${S.funds<0?'bad':''}">${fmt(S.funds)}</div>
+      <div class="sub">대출 잔액 ${fmt(S.loan)} (고정 이자 1%/시간)</div>
+      <div class="sub">인력 ${S.teams.length}팀 · 시간당 인건비 ${fmt(S.teams.reduce((a,t)=>a+salaryPerSec(t)*3600,0))}</div></div>
+    <div class="card"><h3>진행 중인 연구</h3>${rs}</div>
+    <div class="card"><h3>진행 중인 부품 제작</h3>${bs}</div>
+    <div class="card"><h3>발사 관제</h3>
+      <div>${fl}</div>
+      <div class="sub">완성 로켓 ${ready}기 · 제안 계약 ${S.offers.length}건 · 수락 계약 ${S.accepted.length}건</div></div>
+    <div class="card"><h3>최근 기록</h3>
+      ${S.log.slice(0,8).map(l=>`<div class="sub">${esc(l)}</div>`).join('')||'<div class="sub">기록 없음</div>'}</div>`;
+  },
+  research(){
+    return `<div class="card" style="grid-column:1/-1"><div class="sub">연구는 한 분야당 한 번에 하나씩 진행됩니다. 같은 분야 전문팀이 비어 있으면 자동 배정되어 연구 시간이 단축됩니다. 연구는 백그라운드에서 계속 진행됩니다.</div></div>`+
+    KEYS.map(k=>{
+      const lvl=S.lvl[k],r=S.research[k],max=lvl>=C.MAX_LEVEL;
+      const prog=r?Math.min(100,(1-remain(r.end)/((r.end-r.start||1)))*100):0;
+      return `<div class="card"><h3>${PARTS[k].name} <span class="tag">Lv.${lvl}</span></h3>
+        ${r?`<div class="sub">Lv.${r.target} 연구 중 · ${fmtT(remain(r.end))} 남음</div>`:
+          `<div class="sub">${max?'최대 단계 도달':`다음 단계 비용 ${fmt(rCost(lvl))} · 시간 ${fmtT(rTime(lvl))}`}</div>`}
+        <div style="margin-top:10px"><button data-act="research" data-k="${k}" ${r||max?'disabled':''}>${r?'연구 중':'연구 시작'}</button></div></div>`;
+    }).join('');
+  },
+  team(){
+    const free=Math.max(0,C.FREE_RECRUIT_CD-(Date.now()-S.lastFree)/1000);
+    const list=S.teams.map(t=>`<div class="row"><span><b>${PARTS[t.kind].team}</b> <span class="tag">${GRADES[t.grade].n}</span> ${t.size}명</span><span class="sub">${t.task?'연구 배정':'대기'} · ${fmt(salaryPerSec(t)*3600)}/시간</span> <button class="ghost" data-act="fire" data-id="${t.id}" ${t.task?'disabled':''}>해고</button></div>`).join('')||'<div class="sub">보유 팀 없음</div>';
+    return `<div class="card"><h3>팀 모집</h3>
+      <div class="sub">무료 모집: ${free>0?'대기 '+fmtT(free):'가능'}</div>
+      <div class="row" style="border:0"><button data-act="recruit" data-paid="0" ${free>0?'disabled':''}>무료 모집</button>
+      <button data-act="recruit" data-paid="1" class="ghost" ${S.funds<C.PAID_RECRUIT?'disabled':''}>유료 모집 ${fmt(C.PAID_RECRUIT)}</button></div>
+      <div class="sub">모집 결과는 팀 종류·등급·인원이 무작위로 정해집니다.</div></div>
+    <div class="card" style="grid-column:span 2"><h3>보유 팀 (${S.teams.length}/${C.MAX_TEAMS})</h3>${list}</div>`;
+  },
+  build(){
+    const unf=S.rockets.filter(r=>!isReady(r)).length;
+    const cards=S.rockets.filter(r=>!(S.flight&&S.flight.rid===r.id)).map(r=>{
+      const rows=KEYS.map(k=>{
+        const b=S.builds.find(x=>x.rid===r.id&&x.part===k);
+        let st;
+        if(r.slots[k]!==null) st=`<span class="ok">완료 Lv.${r.slots[k]}</span>`;
+        else if(b) st=`<span class="warn">제작 중 · ${fmtT(remain(b.end))}</span>`;
+        else{
+          const bl=Math.min(Math.max(S.lvl[k],0),Math.max(1,ui.bl[r.id+k]||S.lvl[k]));
+          st=S.lvl[k]<1?'<span class="sub">연구 필요</span>':`<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap"><button class="ghost" data-act="blDown" data-id="${r.id}" data-k="${k}" ${bl<=1?'disabled':''}>−</button><span class="tag">Lv.${bl}</span><button class="ghost" data-act="blUp" data-id="${r.id}" data-k="${k}" ${bl>=S.lvl[k]?'disabled':''}>+</button><button data-act="build" data-id="${r.id}" data-k="${k}" data-lv="${bl}" ${S.funds<bCost(bl)?'disabled':''}>제작 ${fmt(bCost(bl))}</button></span>`;
+        }
+        return `<div class="row"><span>${PARTS[k].name}</span>${st}</div>`;
+      }).join('');
+      return `<div class="card"><h3>로켓 #${r.id} ${isReady(r)?'<span class="tag ok">완성</span>':''}</h3>${rows}
+        ${planLine(r)}</div>`;
+    }).join('');
+    return `<div class="card" style="grid-column:1/-1"><div class="row" style="border:0">
+      <div class="sub">부품은 완성 즉시 해당 로켓에 장착됩니다. 재고·창고는 없습니다. 조립 중 로켓 ${unf}/${C.MAX_ROCKETS}</div>
+      <button data-act="newRocket" ${unf>=C.MAX_ROCKETS?'disabled':''}>새 로켓 조립 시작</button></div></div>${cards||'<div class="card"><div class="sub">조립 중인 로켓이 없습니다.</div></div>'}`;
+  },
+  contract(){
+    const offers=S.offers.map(c=>`<div class="row"><span><b>${esc(c.name)}</b> <span class="sub">${c.weight.toLocaleString('ko-KR')}kg · ${c.dest}</span></span><span class="ok">${fmt(c.reward)}</span><button data-act="accept" data-id="${c.id}">수락</button> <button class="ghost" data-act="reject" data-id="${c.id}">거절</button></div>`).join('')||'<div class="sub">새 계약을 기다리는 중</div>';
+    const acc=S.accepted.map(c=>`<div class="row"><span><b>${esc(c.name)}</b> <span class="sub">${c.weight.toLocaleString('ko-KR')}kg · ${c.dest}</span></span><span class="ok">${fmt(c.reward)}</span> <button class="ghost" data-act="abandon" data-id="${c.id}" ${S.flight&&S.flight.cids.includes(c.id)?'disabled':''}>포기</button></div>`).join('')||'<div class="sub">수락한 계약 없음</div>';
+    const orbitBtns=['저궤도','고궤도','달 궤도','시험'].map(o=>{
+      const n=o==='시험'?'':S.accepted.filter(c=>c.dest===o).length;
+      const need=o==='시험'?0:ORBIT[o].req;
+      const off=S.flight||!S.rockets.some(r=>isReady(r)&&r.slots.eng>=need)||(o!=='시험'&&!n);
+      return `<button ${o==='시험'?'class="ghost"':''} data-act="launch" data-k="${o}" ${off?'disabled':''}>${o==='시험'?'시험 발사':o+' 발사 ('+n+'건)'}</button>`;
+    }).join(' ');
+    const ready=S.rockets.filter(isReady).length;
+    return `<div class="card"><h3>제안 계약</h3>${offers}</div>
+      <div class="card"><h3>수락한 계약</h3>${acc}
+        <div class="row" style="border:0;margin-top:8px;justify-content:flex-start">${orbitBtns}</div>
+        <div class="sub">궤도 조건: 저궤도 엔진 Lv.1 · 고궤도 엔진 Lv.3 · 달 궤도 엔진 Lv.5 이상. 같은 궤도의 수락 계약을 한 번에 함께 실어 보내며, 실패 시 로켓과 화물이 사라지고 보상은 없습니다. 완성 로켓 ${ready}기.</div></div>`;
+  },
+  finance(){
+    const limit=S.level*1000000;
+    return `<div class="card"><h3>자금</h3><div class="big ${S.funds<0?'bad':''}">${fmt(S.funds)}</div>
+      <div class="sub">대출 잔액 ${fmt(S.loan)} · 한도 ${fmt(limit)} · 이자 고정 1%</div></div>
+      <div class="card"><h3>대출 / 상환</h3>
+        <input type="number" id="amt" value="${ui.amt}" oninput="ui.amt=this.value" min="0" step="100000">
+        <div class="row" style="border:0;margin-top:8px"><button data-act="borrow">대출</button><button class="ghost" data-act="repay">상환</button></div>
+        <div class="sub">원하는 시점에 자유롭게 상환할 수 있습니다. 대출은 회사 레벨에 따라 한도가 늘어납니다.</div></div>`;
+  },
+  info(){
+    const miss=['기업 형태 변경 제안 (국영화·민영화·인수)','민간 기업 외부 투자 제안','국영 기업 정부 국가 임무','필수 임무 / 선택 임무 체계 (현재는 계약 방식만 구현)','달 탐사 · 달 기지 · 화성 단계 및 단계별 해금','연구 해금 조건 (단계 기반 잠금)','동일 팀 중복 시 경험치 전환 / 팀 분할 운용 / 숙련도','발사 2D 애니메이션 (현재는 결과만 표시)','2단 로켓 연결 효과 및 로켓 부품 조합 세부 규칙 확인'];
+    return `<div class="card"><h3>회사 정보</h3>
+      <div class="row"><span>회사 이름</span><span>${esc(S.name)}</span></div>
+      <div class="row"><span>형태</span><span>${TYPES[S.type].name}</span></div>
+      <div class="row"><span>기초 부품 연구 상태</span><span>1단 Lv.${S.lvl.s1} · 2단 Lv.${S.lvl.s2} · 엔진 Lv.${S.lvl.eng} · 화물 Lv.${S.lvl.cargo}</span></div>
+      <div style="margin-top:12px"><button class="ghost" data-act="newgame">새 게임</button></div></div>
+      <div class="card" style="grid-column:span 2"><h3>아직 구현되지 않은 기능</h3>
+      ${miss.map(m=>`<div class="row"><span class="warn">·</span><span style="flex:1">${m}</span></div>`).join('')}
+      <div class="sub" style="margin-top:8px">위 항목은 완성된 것처럼 동작하지 않으며 다음 빌드에서 구현합니다.</div></div>`;
+  }
+};
+
+function setupHTML(){
+  return `<div class="wrap"><div class="card"><h3>우주항공 기업 설립</h3>
+    <div class="sub">기업 이름</div>
+    <input id="nm" value="${esc(ui.setupName)}" oninput="ui.setupName=this.value" maxlength="20" placeholder="예: 스타라이즈">
+    <div class="sub" style="margin-top:12px">기업 형태</div>
+    ${Object.entries(TYPES).map(([k,t],i)=>`<div class="opt"><label><input type="radio" name="ty" value="${k}" ${i===0?'checked':''}> <b>${t.name}</b> · ${fmt(t.funds)}<div class="sub">${t.desc}</div></label></div>`).join('')}
+    ${S?'<div class="sub warn" style="margin-top:8px">새 게임을 시작하면 현재 진행 상황은 삭제됩니다.</div>':''}
+    <button data-act="start" style="width:100%;margin-top:8px">시작하기</button>
+    ${S?'<button class="ghost" data-act="cancelsetup" style="width:100%;margin-top:8px">취소 (기존 게임으로 돌아가기)</button>':''}
+    <div class="sub" style="margin-top:8px">기본 제공: 4종 부품 Lv.1 기초 연구 완료 상태. 부품, 로켓, 인력은 직접 만들어야 합니다.</div></div></div>`;
+}
+
+const STARS='<circle cx="30" cy="25" r="1.2" fill="#fff"/><circle cx="90" cy="60" r="1" fill="#fff"/><circle cx="160" cy="20" r="1.4" fill="#fff"/><circle cx="330" cy="40" r="1" fill="#fff"/><circle cx="370" cy="90" r="1.3" fill="#fff"/><circle cx="220" cy="70" r="1" fill="#fff"/>';
+const GROUND='<rect x="0" y="184" width="400" height="16" fill="#1e2f1e"/>';
+
+const STAGES=['발사대 최종 점검','카운트다운','엔진 점화 및 이륙','대기권 돌파','1단 분리','2단 엔진 점화','궤도 진입','화물 분리 및 결과 발표'];
+function rocketSVG(r,lift,flame,st,prog){
+  const base=184+lift;
+  const seg=(k,x,y,w,h)=>{
+    const col={s1:'#e6ebff',s2:'#cfd8ee',eng:'#ff9f43',cargo:'#4ea8ff'}[k];
+    return r.slots[k]!==null?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}"/>`
+      :`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#6a7699" stroke-dasharray="3 3"/>`;
+  };
+  const f=prog*8-Math.floor(prog*8);
+  const col={s1:'#e6ebff',s2:'#cfd8ee',eng:'#ff9f43',cargo:'#4ea8ff'};
+  const piece=(k,x,y,w,h,op)=>r.slots[k]!==null?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col[k]}" opacity="${op}"/>`:'';
+  // 1단: 4단계(분리) 동안 떨어지며 흐려지고, 5단계부터 완전히 사라짐
+  const s1=st<4?seg('s1',90,base-46,30,36):st===4?piece('s1',90,base-46+f*60,30,36,(1-f).toFixed(2)):'';
+  // 화물: 8단계 직전(7단계)에 분리되어 위로 흩어지며 사라짐
+  const cg=st<7?seg('cargo',94,base-90,22,18):st===7?piece('cargo',150,base-90-f*40,22,18,(1-f).toFixed(2)):'';
+  // 1단 엔진 불꽃: 2~3단계, 2단 엔진 불꽃: 5~6단계
+  const flameBase=flame&&(st===2||st===3)?`<polygon points="98,${base} 112,${base} 105,${base+14+4*Math.sin(Date.now()/90)}" fill="#ffb347"/>`:'';
+  const flameS2=flame&&(st===5||st===6)?`<polygon points="99,${base-46} 111,${base-46} 105,${base-34+3*Math.sin(Date.now()/70)}" fill="#ffd166"/>`:'';
+  // 2단과 엔진: 6단계(궤도 진입) 동안 위로 떠나며 흐려지고, 7단계에는 남지 않음
+  const bodyOp=st<6?1:st===6?(1-f).toFixed(2):0;
+  // 엔진은 1단에 붙어 있어서 4단계 분리 때 1단과 함께 떨어짐
+  const eng=st<4?seg('eng',95,base-10,20,10):st===4?piece('eng',95,base-10+f*60,20,10,(1-f).toFixed(2)):'';
+  return `${flameBase}${flameS2}<g opacity="${bodyOp}">${seg('s2',92,base-72,26,26)}</g>${eng}${s1}${cg}`;
+}
+function renderScene(){
+  const el=document.getElementById('scene');
+  if(!S||ui.setup){
+    el.innerHTML=`<div class="sc-top"><b>우주항공 기업 경영 시뮬레이션</b></div><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMax meet">${STARS}${GROUND}</svg>`;
+    return;
+  }
+  const fl=S.flight;
+  const disp=(fl&&findR(fl.rid))||S.rockets.find(isReady)||S.rockets[0]||null;
+  const prog=fl?Math.min(1,Math.max(0,(Date.now()-fl.start)/(fl.end-fl.start))):0;
+  const st=Math.min(7,Math.floor(prog*8));
+  const lift=fl?-Math.max(0,(prog-0.25)/0.75)*90:0;
+  const boom=!!(fl&&fl.fail&&st>=fl.failAt);
+  const bH=40+S.level*8;
+  const status=fl?`${STAGES[st]} (${st+1}/8)`:(disp?(isReady(disp)?'발사 대기':'조립 중'):'로켓 없음');
+  el.innerHTML=`<div class="sc-top"><div><div class="big ${S.funds<0?'bad':''}">${fmt(S.funds)}</div>
+      <div><b>${esc(S.name)}</b> <span class="tag">${TYPES[S.type].name}</span><span class="tag">Lv.${S.level}</span></div></div>
+      <button class="btn-new" data-act="newgame">새 게임</button></div>
+    <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMax meet">${STARS}
+      <rect x="260" y="${200-bH}" width="100" height="${bH}" fill="#2c3d66"/>
+      <rect x="272" y="${200-bH+10}" width="76" height="${bH-30}" fill="#3a527f"/>
+      <rect x="282" y="${200-bH+18}" width="56" height="10" fill="#9fd3ff" opacity=".6"/>
+      ${GROUND}
+      <rect x="55" y="184" width="100" height="10" fill="#555f73"/>
+      ${fl&&st===1?`<text x="200" y="70" text-anchor="middle" font-size="40" font-weight="700" fill="#ffc857">${3-Math.min(2,Math.floor((prog*8-1)*3))}</text>`:''}
+      ${disp&&!boom?`<g>${rocketSVG(disp,lift,!!fl,st,prog)}</g>`:''}
+      ${boom&&st<=fl.failAt+1?`<circle cx="105" cy="${184+lift-40}" r="${20+6*Math.sin(Date.now()/100)}" fill="#ff8a4c" opacity=".85"/><circle cx="105" cy="${184+lift-40}" r="${9+3*Math.sin(Date.now()/80)}" fill="#ffd166"/>`:''}
+    </svg>
+    <div class="sc-status">${esc(status)} · 완성 로켓 ${S.rockets.filter(isReady).length}기</div>
+    ${S.result&&Date.now()-S.result.t<6000?`<div class="sc-result ${S.result.ok?'ok':'bad'}">${esc(S.result.msg)}</div>`:''}`;
+}
+function renderPanel(){
+  const app=document.getElementById('app');
+  document.getElementById('msg').textContent=ui.msg;
+  if(!S||ui.setup){
+    document.getElementById('nav').innerHTML='';
+    app.innerHTML=setupHTML();
+    return;
+  }
+  document.getElementById('nav').innerHTML=TABS.map(([k,n])=>`<button class="${ui.tab===k?'':'ghost'}" data-act="tab" data-k="${k}">${n}</button>`).join('');
+  app.innerHTML=`<main>${PAGES[ui.tab]()}</main>`;
+}
+function render(){renderScene();renderPanel();}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');
+  if(!b||b.disabled) return;
+  const a=b.dataset.act,id=Number(b.dataset.id),k=b.dataset.k;
+  let err=null;
+  if(a==='tab'){ui.tab=k}
+  else if(a==='start'){
+    const name=ui.setupName.trim();
+    const type=(document.querySelector('input[name=ty]:checked')||{}).value||'private';
+    if(!name){err='기업 이름을 입력하세요.'}
+    else{S=newState(name,type);S.lastTick=Date.now();log(`${name} 설립 (${TYPES[type].name})`);save();ui.setup=false;ui.tab='dash';ui.setupName='';}
+  }
+  else if(a==='research') err=startResearch(k);
+  else if(a==='recruit') err=recruit(b.dataset.paid==='1');
+  else if(a==='newRocket') err=newRocket();
+  else if(a==='fire') err=fireTeam(id);
+  else if(a==='build') err=build(id,k,Number(b.dataset.lv));
+  else if(a==='blUp'||a==='blDown'){const key=id+k;const cur=ui.bl[key]||S.lvl[k];ui.bl[key]=Math.max(1,Math.min(S.lvl[k],cur+(a==='blUp'?1:-1)));}
+  else if(a==='accept') err=accept(id);
+  else if(a==='reject') err=rejectContract(id);
+  else if(a==='abandon') err=abandonContract(id);
+  else if(a==='launch') err=launch(k);
+  else if(a==='borrow') err=borrow();
+  else if(a==='repay') err=repay();
+  else if(a==='newgame'){ui.setup=true;ui.setupName='';ui.msg='';render();return;}
+  else if(a==='cancelsetup'){ui.setup=false;ui.msg='';}
+  ui.msg=err||'';
+  if(S) save();
+  render();
+});
+
+load();
+if(!S) ui.setup=true;
+setInterval(()=>{
+  if(!S) return;
+  tick();
+  if(Date.now()-(S._saved||0)>5000){S._saved=Date.now();save();}
+  renderScene();
+  if(!ui.setup) renderPanel();
+},1000);
+setInterval(()=>{if(S&&!ui.setup&&(S.flight||S.result))renderScene();},200);
+render();
+</script>
+</body>
+</html>
