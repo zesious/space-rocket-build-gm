@@ -36,6 +36,7 @@ input,select{background:#0c1328;color:var(--text);border:1px solid var(--line);b
 #scene svg{flex:1;width:100%;min-height:0}
 .sc-status{position:absolute;left:12px;bottom:8px;font-size:13px;color:#cfe0ff;background:rgba(11,16,32,.7);padding:4px 10px;border-radius:8px}
 .btn-new{background:#ff8a4c;color:#1a0d00}
+button{touch-action:manipulation;min-height:36px;-webkit-tap-highlight-color:transparent}
 .sc-result{position:absolute;top:58px;left:50%;transform:translateX(-50%);font-weight:700;background:rgba(11,16,32,.85);padding:6px 14px;border-radius:8px;white-space:nowrap;font-size:15px}
 #panel{flex:1 1 50%;min-height:0;overflow-y:auto;background:var(--bg)}
 #panel nav{position:sticky;top:0;background:var(--bg);z-index:2;padding:8px 12px;margin:0;max-width:none;border-bottom:1px solid var(--line)}
@@ -370,7 +371,7 @@ const PAGES={
         }
         return `<div class="row"><span>${PARTS[k].name}</span>${st}</div>`;
       }).join('');
-      return `<div class="card"><h3>로켓 #${r.id} ${isReady(r)?'<span class="tag ok">완성</span>':''}</h3>${rows}
+      return `<div class="card"><h3>로켓 #${r.id} ${isReady(r)?'<span class="tag ok">완성</span>':''}</h3><div style="display:flex;gap:12px;align-items:flex-start"><svg viewBox="-60 -150 120 160" width="90" height="120" style="flex:0 0 auto">${drawPreview(r)}</svg><div style="flex:1;min-width:0">${rows}</div></div>
         ${planLine(r)}</div>`;
     }).join('');
     return `<div class="card" style="grid-column:1/-1"><div class="row" style="border:0">
@@ -430,29 +431,94 @@ const STARS='<circle cx="30" cy="25" r="1.2" fill="#fff"/><circle cx="90" cy="60
 const GROUND='<rect x="0" y="184" width="400" height="16" fill="#1e2f1e"/>';
 
 const STAGES=['발사대 최종 점검','카운트다운','엔진 점화 및 이륙','대기권 돌파','1단 분리','2단 엔진 점화','궤도 진입','화물 분리 및 결과 발표'];
+const PART_COL={s1:'#e6ebff',s2:'#cfd8ee',eng:'#ff9f43',cargo:'#4ea8ff'};
+const PSTY=(on,col)=>on?`fill="${col}"`:'fill="none" stroke="#6a7699" stroke-dasharray="3 3"';
+// 장착 여부와 레벨: 장착 부품은 장착 레벨, 제작 중은 제작 레벨, 미착수는 선택 레벨
+function levelsOf(r){
+  const lv={},filled={};
+  for(const k of KEYS){
+    const b=S.builds.find(x=>x.rid===r.id&&x.part===k);
+    filled[k]=r.slots[k]!==null;
+    if(filled[k]) lv[k]=r.slots[k];
+    else if(b) lv[k]=b.lvl;
+    else lv[k]=Math.min(S.lvl[k],Math.max(1,ui.bl[r.id+k]||S.lvl[k]));
+  }
+  return {lv,filled};
+}
+// 부품 레벨 → 형상 치수 (5단계 이후는 외형 고정)
+function partGeo(L0){
+  const L={};for(const k of KEYS) L[k]=Math.min(L0[k],5);
+  const eng={n:L.eng<=2?1:L.eng<=4?2:4,w:10+L.eng*2,h:6+L.eng*2,lv:L.eng};
+  const s1={len:30+L.s1*4,d:22+L.s1*2,fins:L.s1<=2?0:L.s1<=4?4:6,fo:4+L.s1,ribs:L.s1>=4};
+  const s2={len:22+L.s2*3,d:Math.min(18+L.s2*1.5,s1.d-2),lv:L.s2};
+  const cg={len:18+L.cargo*2,d:s2.d,shape:L.cargo<=2?'cone':L.cargo<=4?'ogive':'blunt'};
+  return {eng,s1,s2,cg};
+}
+// 각 연결면의 y 위치 (아래가 0, 위로 음수)
+function ysOf(g){
+  const yt1=-g.eng.h-g.s1.len, jt=yt1-3, yt2=jt-g.s2.len;
+  return {yt1,jt,yt2};
+}
+function engSVG(g,on){
+  const e=g.eng, nw=e.n===1?e.w:e.n===2?e.w*0.6:e.w*0.4;
+  const xs=e.n===1?[0]:e.n===2?[-e.w*0.3,e.w*0.3]:[-e.w*0.75,-e.w*0.25,e.w*0.25,e.w*0.75];
+  const top=nw*0.7;
+  return xs.map(x=>`<polygon points="${x-top/2},${-e.h} ${x+top/2},${-e.h} ${x+nw/2},0 ${x-nw/2},0" ${PSTY(on,PART_COL.eng)}/>`
+    +(e.lv>=3?`<ellipse cx="${x}" cy="-1" rx="${nw*0.25}" ry="1" fill="#1a1f30"/>`:'')).join('');
+}
+function s1SVG(g,on){
+  const s=g.s1, yb=-g.eng.h, yt=yb-s.len, h2=s.d/2;
+  let o=`<rect x="${-h2}" y="${yt}" width="${s.d}" height="${s.len}" ${PSTY(on,PART_COL.s1)}/>`;
+  if(on&&s.fins){
+    const fin=sg=>`<polygon points="${sg*h2},${yb-s.len*0.5} ${sg*(h2+s.fo)},${yb} ${sg*h2},${yb}" fill="#9aa6c7"/>`;
+    o+=fin(1)+fin(-1);
+  }
+  if(on&&s.ribs) for(let y=yt+8;y<yb-3;y+=9) o+=`<line x1="${-h2}" y1="${y}" x2="${h2}" y2="${y}" stroke="#9aa6c7" stroke-width="0.8"/>`;
+  return o;
+}
+function s2SVG(g,on,ys){
+  const s=g.s2, h2=s.d/2;
+  // 연결 링: 1단과 2단 사이를 이어주는 부품 (2단 지름보다 살짝 넓음)
+  let o=`<rect x="${-(h2+1)}" y="${ys.jt}" width="${s.d+2}" height="3" fill="#7d8aab"/>`;
+  o+=`<rect x="${-h2}" y="${ys.yt2}" width="${s.d}" height="${s.len}" ${PSTY(on,PART_COL.s2)}/>`;
+  if(on&&s.lv>=3) o+=`<line x1="${-h2}" y1="${ys.yt2+s.len/2}" x2="${h2}" y2="${ys.yt2+s.len/2}" stroke="#9aa6c7" stroke-width="0.8"/>`;
+  return o;
+}
+function cgSVG(g,on,t){
+  const c=g.cg, d=c.d/2, h=c.len;
+  const p=c.shape==='cone'?`M${-d},${t} L0,${t-h} L${d},${t} Z`
+    :c.shape==='ogive'?`M${-d},${t} C${-d},${t-h*0.7} ${-d*0.3},${t-h} 0,${t-h} C${d*0.3},${t-h} ${d},${t-h*0.7} ${d},${t} Z`
+    :`M${-d},${t} L${-d},${t-h*0.55} Q${-d},${t-h} ${-d*0.5},${t-h} L${d*0.5},${t-h} Q${d},${t-h} ${d},${t-h*0.55} L${d},${t} Z`;
+  return `<path d="${p}" ${PSTY(on,PART_COL.cargo)}/>`;
+}
+// 로켓 본체 (원점 = 노즐 바닥 중앙). A: 단계별 분리 애니메이션 값
+function rocketBody(r,A){
+  const {lv,filled}=levelsOf(r);
+  const g=partGeo(lv), ys=ysOf(g);
+  const a=Object.assign({lowDy:0,lowOp:1,midDy:0,midOp:1,cgDy:0,cgOp:1,low:true,mid:true,cg:true},A||{});
+  const low=a.low?`<g transform="translate(0,${a.lowDy})" opacity="${a.lowOp}">${engSVG(g,filled.eng)}${s1SVG(g,filled.s1)}</g>`:'';
+  const mid=a.mid?`<g transform="translate(0,${a.midDy})" opacity="${a.midOp}">${s2SVG(g,filled.s2,ys)}</g>`:'';
+  const cg=a.cg?`<g transform="translate(0,${a.cgDy})" opacity="${a.cgOp}">${cgSVG(g,filled.cargo,ys.yt2)}</g>`:'';
+  return low+mid+cg;
+}
+// 발사 장면: 단계별 분리와 불꽃
 function rocketSVG(r,lift,flame,st,prog){
   const base=184+lift;
-  const seg=(k,x,y,w,h)=>{
-    const col={s1:'#e6ebff',s2:'#cfd8ee',eng:'#ff9f43',cargo:'#4ea8ff'}[k];
-    return r.slots[k]!==null?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}"/>`
-      :`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#6a7699" stroke-dasharray="3 3"/>`;
-  };
   const f=prog*8-Math.floor(prog*8);
-  const col={s1:'#e6ebff',s2:'#cfd8ee',eng:'#ff9f43',cargo:'#4ea8ff'};
-  const piece=(k,x,y,w,h,op)=>r.slots[k]!==null?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col[k]}" opacity="${op}"/>`:'';
-  // 1단: 4단계(분리) 동안 떨어지며 흐려지고, 5단계부터 완전히 사라짐
-  const s1=st<4?seg('s1',90,base-46,30,36):st===4?piece('s1',90,base-46+f*60,30,36,(1-f).toFixed(2)):'';
-  // 화물: 8단계 직전(7단계)에 분리되어 위로 흩어지며 사라짐
-  const cg=st<7?seg('cargo',94,base-90,22,18):st===7?piece('cargo',150,base-90-f*40,22,18,(1-f).toFixed(2)):'';
-  // 1단 엔진 불꽃: 2~3단계, 2단 엔진 불꽃: 5~6단계
-  const flameBase=flame&&(st===2||st===3)?`<polygon points="98,${base} 112,${base} 105,${base+14+4*Math.sin(Date.now()/90)}" fill="#ffb347"/>`:'';
-  const flameS2=flame&&(st===5||st===6)?`<polygon points="99,${base-46} 111,${base-46} 105,${base-34+3*Math.sin(Date.now()/70)}" fill="#ffd166"/>`:'';
-  // 2단과 엔진: 6단계(궤도 진입) 동안 위로 떠나며 흐려지고, 7단계에는 남지 않음
-  const bodyOp=st<6?1:st===6?(1-f).toFixed(2):0;
-  // 엔진은 1단에 붙어 있어서 4단계 분리 때 1단과 함께 떨어짐
-  const eng=st<4?seg('eng',95,base-10,20,10):st===4?piece('eng',95,base-10+f*60,20,10,(1-f).toFixed(2)):'';
-  return `${flameBase}${flameS2}<g opacity="${bodyOp}">${seg('s2',92,base-72,26,26)}</g>${eng}${s1}${cg}`;
+  const g=partGeo(levelsOf(r).lv), ys=ysOf(g);
+  const A={};
+  if(st===4){A.lowDy=f*60;A.lowOp=(1-f).toFixed(2);}
+  else if(st>=5){A.low=false;}
+  if(st===6){A.midDy=-f*30;A.midOp=(1-f).toFixed(2);}
+  else if(st>=7){A.mid=false;}
+  if(st===7){A.cgDy=-f*40;A.cgOp=(1-f).toFixed(2);}
+  const fw=g.eng.w*0.8;
+  const fBase=flame&&(st===2||st===3)?`<polygon points="${-fw/2},0 ${fw/2},0 0,${12+4*Math.sin(Date.now()/90)}" fill="#ffb347"/>`:'';
+  const fS2=flame&&(st===5||st===6)?`<polygon points="${-g.s2.d*0.2},${ys.jt} ${g.s2.d*0.2},${ys.jt} 0,${ys.jt+8+3*Math.sin(Date.now()/70)}" fill="#ffd166"/>`:'';
+  return `<g transform="translate(105,${base})">${fBase}${fS2}${rocketBody(r,A)}</g>`;
 }
+// 제작 화면 미리보기 (원점 기준 좌표)
+function drawPreview(r){return `<g>${rocketBody(r,null)}</g>`;}
 function renderScene(){
   const el=document.getElementById('scene');
   if(!S||ui.setup){
@@ -496,7 +562,8 @@ function renderPanel(){
 }
 function render(){renderScene();renderPanel();}
 
-document.addEventListener('click',e=>{
+document.addEventListener('pointerdown',e=>{
+  if(e.button!==0) return;
   const b=e.target.closest('[data-act]');
   if(!b||b.disabled) return;
   const a=b.dataset.act,id=Number(b.dataset.id),k=b.dataset.k;
