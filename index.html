@@ -55,7 +55,7 @@ button{touch-action:manipulation;min-height:36px;-webkit-tap-highlight-color:tra
 <script>
 /* ===== 확정 규칙 및 밸런스 상수 ===== */
 const SAVE_KEY='space_tycoon_v1';
-const C={FAIL_BASE:0.30,LOAN_RATE:0.01,MAX_LEVEL:10,FREE_RECRUIT_CD:600,PAID_RECRUIT:50000,MAX_TEAMS:8,LAUNCH_SEC:30,CONTRACT_GEN_SEC:30,MAX_OFFERS:6,MAX_ROCKETS:3,MAX_ACCEPTED:8};
+const C={FAIL_BASE:0.30,LOAN_RATE:0.01,MAX_LEVEL:10,FREE_RECRUIT_CD:600,PAID_RECRUIT:50000,MAX_TEAMS:8,LAUNCH_SEC:30,CONTRACT_GEN_SEC:30,MAX_OFFERS:6,MAX_ROCKETS:3,MAX_ACCEPTED:8,MAX_TOTAL_ROCKETS:6};
 const PARTS={s1:{name:'1단 로켓',team:'1단 로켓팀'},s2:{name:'2단 로켓',team:'2단 로켓팀'},eng:{name:'엔진',team:'엔진팀'},cargo:{name:'화물 공간',team:'화물팀'}};
 const KEYS=Object.keys(PARTS);
 const GRADES=[{n:'일반',w:50,m:1},{n:'고급',w:30,m:1.2},{n:'희귀',w:14,m:1.5},{n:'영웅',w:5,m:1.8},{n:'전설',w:1,m:2.5}];
@@ -164,6 +164,7 @@ function fireTeam(tid){
   return null;
 }
 function newRocket(){
+  if(S.rockets.length>=C.MAX_TOTAL_ROCKETS) return `보유할 수 있는 로켓은 최대 ${C.MAX_TOTAL_ROCKETS}기입니다.`;
   const unfinished=S.rockets.filter(r=>!isReady(r)).length;
   if(unfinished>=C.MAX_ROCKETS) return `동시에 조립 가능한 로켓은 ${C.MAX_ROCKETS}개입니다.`;
   S.rockets.push({id:uid(),slots:{s1:null,s2:null,eng:null,cargo:null}});
@@ -375,7 +376,7 @@ const PAGES={
     }).join('');
     return `<div class="card" style="grid-column:1/-1"><div class="row" style="border:0">
       <div class="sub">부품은 완성 즉시 해당 로켓에 장착됩니다. 재고·창고는 없습니다. 조립 중 로켓 ${unf}/${C.MAX_ROCKETS}</div>
-      <button data-act="newRocket" ${unf>=C.MAX_ROCKETS?'disabled':''}>새 로켓 조립 시작</button></div></div>${cards||'<div class="card"><div class="sub">조립 중인 로켓이 없습니다.</div></div>'}`;
+      <button data-act="newRocket" ${unf>=C.MAX_ROCKETS||S.rockets.length>=C.MAX_TOTAL_ROCKETS?'disabled':''}>새 로켓 조립 시작 (${S.rockets.length}/${C.MAX_TOTAL_ROCKETS})</button></div></div>${cards||'<div class="card"><div class="sub">조립 중인 로켓이 없습니다.</div></div>'}`;
   },
   contract(){
     const offers=S.offers.map(c=>`<div class="row"><span><b>${esc(c.name)}</b> <span class="sub">${c.weight.toLocaleString('ko-KR')}kg · ${c.dest}</span></span><span class="ok">${fmt(c.reward)}</span><button data-act="accept" data-id="${c.id}">수락</button> <button class="ghost" data-act="reject" data-id="${c.id}">거절</button></div>`).join('')||'<div class="sub">새 계약을 기다리는 중</div>';
