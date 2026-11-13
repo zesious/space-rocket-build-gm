@@ -55,7 +55,7 @@ button{touch-action:manipulation;min-height:36px;-webkit-tap-highlight-color:tra
 <script>
 /* ===== 확정 규칙 및 밸런스 상수 ===== */
 const SAVE_KEY='space_tycoon_v1';
-const C={FAIL_BASE:0.30,LOAN_RATE:0.01,MAX_LEVEL:10,FREE_RECRUIT_CD:600,PAID_RECRUIT:50000,MAX_TEAMS:8,LAUNCH_SEC:30,CONTRACT_GEN_SEC:30,MAX_OFFERS:3,MAX_ROCKETS:3,MAX_ACCEPTED:8};
+const C={FAIL_BASE:0.30,LOAN_RATE:0.01,MAX_LEVEL:10,FREE_RECRUIT_CD:600,PAID_RECRUIT:50000,MAX_TEAMS:8,LAUNCH_SEC:30,CONTRACT_GEN_SEC:30,MAX_OFFERS:6,MAX_ROCKETS:3,MAX_ACCEPTED:8};
 const PARTS={s1:{name:'1단 로켓',team:'1단 로켓팀'},s2:{name:'2단 로켓',team:'2단 로켓팀'},eng:{name:'엔진',team:'엔진팀'},cargo:{name:'화물 공간',team:'화물팀'}};
 const KEYS=Object.keys(PARTS);
 const GRADES=[{n:'일반',w:50,m:1},{n:'고급',w:30,m:1.2},{n:'희귀',w:14,m:1.5},{n:'영웅',w:5,m:1.8},{n:'전설',w:1,m:2.5}];
@@ -104,18 +104,17 @@ const ui={tab:'dash',msg:'',amt:'1000000',setupName:'',bl:{}};
 
 function newState(name,type){
   const s={v:1,name,type,level:1,xp:0,funds:TYPES[type].funds,loan:0,
-    lastTick:Date.now(),lastFree:0,lastGen:Date.now(),
+    lastTick:Date.now(),lastFree:0,lastGen:Date.now(),nextGen:Date.now()+C.CONTRACT_GEN_SEC*1000,
     lvl:{s1:1,s2:1,eng:1,cargo:1},   // 시작: 4종 부품 모두 Lv.1 기초 연구 완료
     research:{},teams:[],builds:[],rockets:[],offers:[],accepted:[],flight:null,log:[],nextId:1};
-  for(let i=0;i<C.MAX_OFFERS;i++) s.offers.push(newContract(s));
+  for(let i=0;i<3;i++) s.offers.push(newContract(s));
   return s;
 }
 function newContract(s){
   const cap=300+s.level*200;
   const w=Math.round((200+Math.random()*(cap-200))/100)*100;
   const open=Object.keys(ORBIT).filter(o=>ORBIT[o].req<=s.lvl.eng);
-  const fresh=open.filter(o=>!s.offers.some(c=>c.dest===o));
-  const dest=rnd(fresh.length?fresh:open);
+  const dest=rnd(open);
   return {id:s.nextId++,name:rnd(CONTRACT_NAMES),weight:w,reward:Math.round(w*(250+s.level*25)*ORBIT[dest].mult),dest};
 }
 function uid(){return S.nextId++}
@@ -288,9 +287,9 @@ function tick(){
     }
   }
   // 새 계약 생성
-  if(S.offers.length<C.MAX_OFFERS&&now-S.lastGen>=C.CONTRACT_GEN_SEC*1000){
-    while(S.offers.length<C.MAX_OFFERS) S.offers.push(newContract(S));
-    S.lastGen=now;
+  if(S.offers.length<C.MAX_OFFERS&&now>=(S.nextGen||0)){
+    S.offers.push(newContract(S));
+    S.nextGen=now+C.CONTRACT_GEN_SEC*(0.5+Math.random())*1000;
   }
 }
 
