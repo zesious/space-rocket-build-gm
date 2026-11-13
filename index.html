@@ -508,12 +508,12 @@ function rocketSVG(r,lift,flame,st,prog){
   const A={};
   if(st===4){A.lowDy=f*60;A.lowOp=(1-f).toFixed(2);}
   else if(st>=5){A.low=false;}
-  if(st===6){A.midDy=-f*30;A.midOp=(1-f).toFixed(2);}
+  if(st===6){A.midOp=(1-f).toFixed(2);}
   else if(st>=7){A.mid=false;}
   if(st===7){A.cgDy=-f*40;A.cgOp=(1-f).toFixed(2);}
   const fw=g.eng.w*0.8;
   const fBase=flame&&(st===2||st===3)?`<polygon points="${-fw/2},0 ${fw/2},0 0,${12+4*Math.sin(Date.now()/90)}" fill="#ffb347"/>`:'';
-  const fS2=flame&&(st===5||st===6)?`<polygon points="${-g.s2.d*0.2},${ys.jt} ${g.s2.d*0.2},${ys.jt} 0,${ys.jt+8+3*Math.sin(Date.now()/70)}" fill="#ffd166"/>`:'';
+  const fS2=flame&&(st===5||st===6)?`<g opacity="${st===6?(1-f).toFixed(2):1}"><polygon points="${-g.s2.d*0.2},${ys.jt} ${g.s2.d*0.2},${ys.jt} 0,${ys.jt+8+3*Math.sin(Date.now()/70)}" fill="#ffd166"/></g>`:'';
   return `<g transform="translate(105,${base})">${fBase}${fS2}${rocketBody(r,A)}</g>`;
 }
 // 제작 화면 미리보기 (원점 기준 좌표)
