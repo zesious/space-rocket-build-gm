@@ -494,27 +494,29 @@ function cgSVG(g,on,t){
 function rocketBody(r,A){
   const {lv,filled}=levelsOf(r);
   const g=partGeo(lv), ys=ysOf(g);
-  const a=Object.assign({lowDy:0,lowOp:1,midDy:0,midOp:1,cgDy:0,cgOp:1,low:true,mid:true,cg:true},A||{});
+  const a=Object.assign({lowDy:0,lowOp:1,midDy:0,midOp:1,cgDx:0,cgDy:0,cgOp:1,low:true,mid:true,cg:true},A||{});
   const low=a.low?`<g transform="translate(0,${a.lowDy})" opacity="${a.lowOp}">${engSVG(g,filled.eng)}${s1SVG(g,filled.s1)}</g>`:'';
   const mid=a.mid?`<g transform="translate(0,${a.midDy})" opacity="${a.midOp}">${s2SVG(g,filled.s2,ys)}</g>`:'';
-  const cg=a.cg?`<g transform="translate(0,${a.cgDy})" opacity="${a.cgOp}">${cgSVG(g,filled.cargo,ys.yt2)}</g>`:'';
+  const cg=a.cg?`<g transform="translate(${a.cgDx},${a.cgDy})" opacity="${a.cgOp}">${cgSVG(g,filled.cargo,ys.yt2)}</g>`:'';
   return low+mid+cg;
 }
 // 발사 장면: 단계별 분리와 불꽃
 function rocketSVG(r,lift,flame,st,prog){
   const base=184+lift;
-  const f=prog*8-Math.floor(prog*8);
+  const f=prog>=1?1:prog*8-Math.floor(prog*8);
+  const q=Math.min(1,Math.max(0,(prog-0.625)/0.375));
+  const sc=1-0.4*q;
   const g=partGeo(levelsOf(r).lv), ys=ysOf(g);
   const A={};
   if(st===4){A.lowDy=f*60;A.lowOp=(1-f).toFixed(2);}
   else if(st>=5){A.low=false;}
   if(st===6){A.midOp=(1-f).toFixed(2);}
   else if(st>=7){A.mid=false;}
-  if(st===7){A.cgDy=-f*40;A.cgOp=(1-f).toFixed(2);}
+  if(st===7){A.cgDx=f*25;A.cgDy=-f*30;A.cgOp=(1-f).toFixed(2);}
   const fw=g.eng.w*0.8;
   const fBase=flame&&(st===2||st===3)?`<polygon points="${-fw/2},0 ${fw/2},0 0,${12+4*Math.sin(Date.now()/90)}" fill="#ffb347"/>`:'';
   const fS2=flame&&(st===5||st===6)?`<g opacity="${st===6?(1-f).toFixed(2):1}"><polygon points="${-g.s2.d*0.2},${ys.jt} ${g.s2.d*0.2},${ys.jt} 0,${ys.jt+8+3*Math.sin(Date.now()/70)}" fill="#ffd166"/></g>`:'';
-  return `<g transform="translate(105,${base})">${fBase}${fS2}${rocketBody(r,A)}</g>`;
+  return `<g transform="translate(105,${base}) scale(${sc.toFixed(3)})">${fBase}${fS2}${rocketBody(r,A)}</g>`;
 }
 // 제작 화면 미리보기 (원점 기준 좌표)
 function drawPreview(r){return `<g>${rocketBody(r,null)}</g>`;}
@@ -528,7 +530,7 @@ function renderScene(){
   const disp=(fl&&findR(fl.rid))||S.rockets.find(isReady)||S.rockets[0]||null;
   const prog=fl?Math.min(1,Math.max(0,(Date.now()-fl.start)/(fl.end-fl.start))):0;
   const st=Math.min(7,Math.floor(prog*8));
-  const lift=fl?-Math.max(0,(prog-0.25)/0.75)*90:0;
+  const lift=fl?-(Math.min(1,Math.max(0,(prog-0.25)/0.25))*40+Math.min(1,Math.max(0,(prog-0.625)/0.375))*50):0;
   const boom=!!(fl&&fl.fail&&st>=fl.failAt);
   const bH=40+S.level*8;
   const status=fl?`${STAGES[st]} (${st+1}/8)`:(disp?(isReady(disp)?'발사 대기':'조립 중'):'로켓 없음');
